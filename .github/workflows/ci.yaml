@@ -1,0 +1,45 @@
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [7.0, 7.1, 7.2, 7.3, 7.4, 8.0, 8.1]
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: Install PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+
+      - name: Install dependencies
+        run: sudo apt-get install pkg-config libzstd1-dev liblz4-dev valgrind
+
+      - name: Configure and build
+        run: |
+          phpize
+          ./configure --enable-redis-lzf --enable-redis-zstd --enable-redis-lz4 --with-liblz4
+          sudo make install
+
+      - name: Run tests
+        run: |
+          php tests/TestRedis.php --class Redis
+          php tests/TestRedis.php --class RedisArray
+          php tests/TestRedis.php --class RedisCluster
+          php tests/TestRedis.php --class RedisSentinel
+          USE_ZEND_ALLOC=0 valgrind --error-exitcode=1 php tests/TestRedis.php --class Redis
+          USE_ZEND_ALLOC=0 valgrind --error-exitcode=1 php tests/TestRedis.php --class RedisArray
+          USE_ZEND_ALLOC=0 valgrind --error-exitcode=1 php tests/TestRedis.php --class RedisCluster
+          USE_ZEND_ALLOC=0 valgrind --error-exitcode=1 php tests/TestRedis.php --class RedisSentinel
